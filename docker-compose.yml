@@ -1,0 +1,12 @@
+version: '3.7'  # Adjust if needed 
+services:
+  mongo:
+    image: mongo:latest  # Or specify a specific tag like 'mongo:6.0'
+    restart: always      # Keep the container running
+    ports:
+      - 27017:27017      # Expose MongoDB's port
+    volumes:
+      - mongodb_data:/data/db  # Create a persistent volume 
+
+volumes:
+  mongodb_data: # Define the volume
