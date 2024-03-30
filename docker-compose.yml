@@ -13,6 +13,7 @@ services:
     depends_on:
       - mongo
     volumes:
+    - ./parser/coordinates.py:/app/coordinates.py
     - ./parser/main.py:/app/main.py
   
   fastapi:

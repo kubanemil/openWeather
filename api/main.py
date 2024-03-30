@@ -33,7 +33,7 @@ async def get_reports(
 ):
     query = {"name": name}
     if start and end:
-        query["timestamp"] = {"$gte": start, "$lte": end}
+        query["last_modified_timestamp"] = {"$gte": start, "$lte": end}
 
     return list(weather_data.find(query, {"_id": 0}))
 
@@ -54,13 +54,13 @@ async def get_metar_by_geo(
                 "lat": {"$gte": min_lat, "$lte": max_lat},
                 "long": {"$gte": min_lon, "$lte": max_lon},
             },
-            projection={"icao": 1, "_id": 0},
+            projection={"name": 1, "_id": 0},
         )
 
-        icao_codes = [station["icao"] for station in matching_stations]
+        icao_codes = [station["name"] for station in matching_stations]
         query = {"name": {"$in": icao_codes}}
         if start and end:
-            query["timestamp"] = {"$gte": start, "$lte": end}
+            query["last_modified_timestamp"] = {"$gte": start, "$lte": end}
 
         return list(weather_data.find(query, {"_id": 0}))
 
@@ -70,6 +70,7 @@ async def get_metar_by_geo(
 
 @app.get("/count_reports")
 async def get_reports_count():
+    """Count of all reports in the database."""
     count = weather_data.count_documents({})
     return {"count": count}
 
