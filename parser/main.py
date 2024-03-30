@@ -47,12 +47,10 @@ def get_new_reports(latest_report, url: str) -> list:
 def parse_report_content(report_content):
     lines = report_content.split("\n")
 
-    location = lines[0].strip()
     datetime_str = lines[1].split("/")[-1].strip()
     timestamp = datetime.strptime(datetime_str, "%Y.%m.%d %H%M %Z").timestamp()
 
-    weather_info = {"loc": location, "timestamp": timestamp}
-
+    weather_info = {}
     for line in lines[2:]:
         line = line.strip()
         if ":" in line:
@@ -60,7 +58,13 @@ def parse_report_content(report_content):
             key = parts[0].strip().lower()
             value = parts[1].strip()
             weather_info[key] = value
-    return weather_info
+
+    return {
+        "timestamp": timestamp,
+        "temperature": weather_info.get("temperature"),
+        "pressure": weather_info.get("pressure (altimeter)"),
+        "wind": weather_info.get("wind"),
+    }
 
 
 async def fetch_report_details(session: aiohttp.ClientSession, report: list[str, str]):
@@ -68,18 +72,14 @@ async def fetch_report_details(session: aiohttp.ClientSession, report: list[str,
     try:
         async with session.get(report_url) as response:
             content = await response.read()
+
         last_modified_timestamp = datetime.strptime(
             report[1], "%d-%b-%Y %H:%M"
         ).timestamp()
         weather_info = parse_report_content(content.decode("latin-1"))
-        timestamp = weather_info.pop("timestamp")
-        doc = {
-            "name": report[0].split(".")[0],
-            "timestamp": timestamp,
-            "last_modified_timestamp": last_modified_timestamp,
-            "details": weather_info
-        }
-        return doc
+        weather_info["name"] = report[0].split(".")[0]
+        weather_info["last_modified_timestamp"] = last_modified_timestamp
+        return weather_info
     except Exception as e:
         logging.error(e)
 
