@@ -7,18 +7,19 @@ import requests
 logging.basicConfig(level=logging.INFO)
 URL = "http://www.moratech.com/aviation/metar-stations.txt"
 
-db = pymongo.MongoClient("mongo")["db"]
-coordinates_collection = db["coordinates"]
+db = pymongo.MongoClient(os.environ["DB_HOST"])[os.environ["DB_NAME"]]
+coordinates_collection = db[os.environ["COORDINATES_COLLECTION"]]
+stations_fn = "metar-stations.txt"
 
 
 def get_file():
-    if os.path.exists("metar-stations.txt"):
+    if os.path.exists(stations_fn):
         logging.debug("File already exists.")
         return
 
     response = requests.get(URL)
     if response.status_code == 200:
-        with open("metar-stations.txt", "w") as file:
+        with open(stations_fn, "w") as file:
             file.write(response.text)
         logging.debug("File downloaded successfully.")
         return
@@ -40,7 +41,7 @@ def convert_to_decimal_degrees(coord_string):
 
 def parse_coordinates():
     get_file()
-    with open("metar-stations.txt", "r") as file:
+    with open(stations_fn, "r") as file:
         lines = file.readlines()[44:]
 
     bulk_ops = []
@@ -68,4 +69,4 @@ def parse_coordinates():
 
 if __name__ == "__main__":
     parse_coordinates()
-    print("Done.")
+    logging.info("Coordinates parse complete.")

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -9,15 +10,15 @@ import requests
 from bs4 import BeautifulSoup
 from coordinates import parse_coordinates
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=os.environ["LEVEL"])
 
-CHECK_PERIOD = 5  # seconds
+CHECK_PERIOD = int(os.environ["CHECK_PERIOD"])
 URL = "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/"
 DATE_SORTED_URL = URL + "?C=M;O=D"
 
-db = pymongo.MongoClient("mongo")["db"]
+db = pymongo.MongoClient(os.environ["DB_HOST"])[os.environ["DB_NAME"]]
 last_report_collection = db["last_report"]
-weather_data = db["weather_data"]
+weather_data = db[os.environ["REPORTS_COLLECTION"]]
 weather_data.create_index([("name", 1), ("last_modified_timestamp", -1)], unique=True)
 
 
@@ -54,7 +55,7 @@ def parse_report_content(report_content):
 
     for line in lines[2:]:
         line = line.strip()
-        if line:
+        if ":" in line:
             parts = line.split(":", 1)
             key = parts[0].strip().lower()
             value = parts[1].strip()
@@ -71,19 +72,21 @@ async def fetch_report_details(session: aiohttp.ClientSession, report: list[str,
             report[1], "%d-%b-%Y %H:%M"
         ).timestamp()
         weather_info = parse_report_content(content.decode("latin-1"))
+        timestamp = weather_info.pop("timestamp")
         doc = {
             "name": report[0].split(".")[0],
+            "timestamp": timestamp,
             "last_modified_timestamp": last_modified_timestamp,
+            "details": weather_info
         }
-        doc.update(weather_info)
         return doc
     except Exception as e:
-        logging.exception(e)
+        logging.error(e)
 
 
 async def retrieve_and_insert_reports(new_reports: list):
     async with aiohttp.ClientSession() as session:
-        logging.info("Fetching new reports...")
+        logging.debug("Fetching new reports...")
         docs = await asyncio.gather(
             *[fetch_report_details(session, report) for report in new_reports]
         )
@@ -100,7 +103,7 @@ async def retrieve_and_insert_reports(new_reports: list):
         for doc in docs
         if doc is not None
     ]
-    logging.info("Bulking new reports...")
+    logging.debug("Bulking new reports...")
     weather_data.bulk_write(bulk_ops)
 
     last_report_collection.delete_many({})
@@ -110,8 +113,9 @@ async def retrieve_and_insert_reports(new_reports: list):
 
 
 if __name__ == "__main__":
-    parse_coordinates()
-    logging.info("Coordinates parsed.")
+    if db[os.environ["COORDINATES_COLLECTION"]].count_documents({}) == 0:
+        parse_coordinates()
+        logging.info("Coordinates parsed.")
 
     while True:
         start = time.time()
@@ -120,10 +124,12 @@ if __name__ == "__main__":
         new_reports = get_new_reports(
             [last_report["name"], last_report["date"]], DATE_SORTED_URL
         )
-        logging.info(f"Number of new reports: {len(new_reports)}")
 
         if new_reports:
             asyncio.run(retrieve_and_insert_reports(new_reports))
 
-        logging.info(f"Done in {round(time.time() - start, 3)} seconds.")
+        logging.info(
+            f"Number of new reports: {len(new_reports)}. "
+            f"Done in {round(time.time() - start, 3)} seconds."
+        )
         time.sleep(CHECK_PERIOD)
