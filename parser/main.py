@@ -41,7 +41,25 @@ def get_new_reports(latest_report, url: str) -> list:
                 break  # parsed all the new reports at this point
             reports.append(report)
     return reports
-    
+
+
+def parse_report_content(report_content):
+    lines = report_content.split("\n")
+
+    location = lines[0].strip()
+    datetime_str = lines[1].split("/")[-1].strip()
+    timestamp = datetime.strptime(datetime_str, "%Y.%m.%d %H%M %Z").timestamp()
+
+    weather_info = {"loc": location, "timestamp": timestamp}
+
+    for line in lines[2:]:
+        line = line.strip()
+        if line:
+            parts = line.split(":", 1)
+            key = parts[0].strip().lower()
+            value = parts[1].strip()
+            weather_info[key] = value
+    return weather_info
 
 
 async def fetch_report_details(session: aiohttp.ClientSession, report: list[str, str]):
@@ -52,14 +70,15 @@ async def fetch_report_details(session: aiohttp.ClientSession, report: list[str,
         last_modified_timestamp = datetime.strptime(
             report[1], "%d-%b-%Y %H:%M"
         ).timestamp()
-        details = content.decode("latin-1")
-        return {
+        weather_info = parse_report_content(content.decode("latin-1"))
+        doc = {
             "name": report[0].split(".")[0],
             "last_modified_timestamp": last_modified_timestamp,
-            "report": details,
         }
+        doc.update(weather_info)
+        return doc
     except Exception as e:
-        logging.error(e)
+        logging.exception(e)
 
 
 async def retrieve_and_insert_reports(new_reports: list):
@@ -79,6 +98,7 @@ async def retrieve_and_insert_reports(new_reports: list):
             upsert=True,
         )
         for doc in docs
+        if doc is not None
     ]
     logging.info("Bulking new reports...")
     weather_data.bulk_write(bulk_ops)

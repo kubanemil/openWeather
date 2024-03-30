@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException, Query
 from geopy.distance import distance
 
 logging.basicConfig(level=logging.DEBUG)
+DEFUALT_START = 1000000000
+DEFUALT_END = 1800000000
 db = pymongo.MongoClient("mongo")["db"]
 last_report_collection = db["last_report"]
 weather_data = db["weather_data"]
@@ -28,12 +30,10 @@ def find_bounding_coords(center_lat, center_lon, radius):
 @app.get("/id")
 async def get_reports(
     name: str,
-    start: int = Query(None, description="Start timestamp"),
-    end: int = Query(None, description="End timestamp"),
+    start: int = Query(DEFUALT_START, ge=0, description="Start timestamp"),
+    end: int = Query(DEFUALT_END, ge=0, description="End timestamp"),
 ):
-    query = {"name": name}
-    if start and end:
-        query["last_modified_timestamp"] = {"$gte": start, "$lte": end}
+    query = {"name": name, "timestamp": {"$gte": start, "$lte": end}}
 
     return list(weather_data.find(query, {"_id": 0}))
 
@@ -42,9 +42,9 @@ async def get_reports(
 async def get_metar_by_geo(
     lat: float = Query(..., description="Latitude of the center"),
     lon: float = Query(..., description="Longitude of the center"),
-    rad: int = Query(..., ge=0, description="Radius in meters"),
-    start: int = Query(None, description="Start timestamp"),
-    end: int = Query(None, description="End timestamp"),
+    rad: int = Query(100_000, ge=0, description="Radius in meters"),
+    start: int = Query(DEFUALT_START, ge=0, description="Start timestamp"),
+    end: int = Query(DEFUALT_END, ge=0, description="End timestamp"),
 ):
     try:
         min_lat, max_lat, min_lon, max_lon = find_bounding_coords(lat, lon, rad)
@@ -58,9 +58,7 @@ async def get_metar_by_geo(
         )
 
         icao_codes = [station["name"] for station in matching_stations]
-        query = {"name": {"$in": icao_codes}}
-        if start and end:
-            query["last_modified_timestamp"] = {"$gte": start, "$lte": end}
+        query = {"name": {"$in": icao_codes}, "timestamp": {"$gte": start, "$lte": end}}
 
         return list(weather_data.find(query, {"_id": 0}))
 
@@ -77,7 +75,7 @@ async def get_reports_count():
 
 @app.get("/coordinates")
 async def get_coordinates(name: str):
-    results = list(coordinates_collection.find({"icao": name}, {"_id": 0}))
+    results = list(coordinates_collection.find({"name": name}, {"_id": 0}))
     return results
 
 
