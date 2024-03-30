@@ -1,0 +1,4 @@
+aiohttp
+pymongo
+requests
+bs4
